@@ -1,0 +1,19 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import type { RewardRow, StudentRow } from "@/lib/db";
+
+type Row = StudentRow & { solved7: number; solved14: number; solved30: number; solved90: number; solved180: number; solved365: number; gifts: RewardRow[] };
+type Data = { group: { name: string; showGifts: boolean }; students: Row[]; updatedAt: string };
+type Sort = "solved_count" | "solved7" | "solved14" | "solved30" | "solved90" | "solved180" | "solved365";
+
+export function PublicStandings({ slug, endpoint = "standings" }: { slug: string; endpoint?: "standings" | "ranklists" }) {
+  const [data, setData] = useState<Data | null>(null); const [sort, setSort] = useState<Sort>("solved_count"); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  const load = useCallback(async (refresh = false) => { setLoading(true); setError(""); try { const response = await fetch(`/api/${endpoint}/${slug}${refresh ? "?refresh=1" : ""}`); const result = await response.json(); if (!response.ok) throw new Error(result.error); setData(result); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not load standings."); } finally { setLoading(false); } }, [slug, endpoint]);
+  useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 300_000); return () => window.clearInterval(timer); }, [load]);
+  const rows = [...(data?.students ?? [])].sort((a, b) => Number(b[sort]) - Number(a[sort]) || b.solved_count - a.solved_count);
+  const scoreLabels: Record<Sort, string> = { solved_count: "Total solved", solved7: "Solved · 7 days", solved14: "Solved · 14 days", solved30: "Solved · 30 days", solved90: "Solved · 3 months", solved180: "Solved · 6 months", solved365: "Solved · 1 year" };
+  return <main className="public-standings"><nav><a className="brand" href="/"><span>A</span><b>ACMP Visualizer</b></a><span>Public standings</span></nav><section><header className="standings-hero"><div><span className="eyebrow">LIVE GROUP STANDINGS</span><h1>{data?.group.name ?? "Loading group…"}</h1><p>Updates automatically every five minutes.</p></div><button onClick={() => load(true)} disabled={loading}>{loading ? "Updating…" : "↻ Update now"}</button></header>{error ? <div className="auth-error">{error}</div> : <><div className="standings-toolbar"><label>Rank by<select value={sort} onChange={(event) => setSort(event.target.value as Sort)}><option value="solved_count">All-time solved</option><option value="solved7">Last 7 days</option><option value="solved14">Last 14 days</option><option value="solved30">Last 30 days</option><option value="solved90">Last 3 months</option><option value="solved180">Last 6 months</option><option value="solved365">Last 1 year</option></select></label><span>{data ? `Updated ${new Date(data.updatedAt).toLocaleString()}` : "Loading…"}</span></div><div className={`standings-table${data?.group.showGifts ? " with-gifts" : ""}`}><div className="standing-head"><span>Rank</span><span>Student</span><span>{scoreLabels[sort]}</span>{data?.group.showGifts && <span>Earned gifts</span>}</div>{rows.map((student, index) => <article key={student.id}><b className={`rank rank-${index + 1}`}>{index + 1}</b><div className="standing-student"><span>{student.name.slice(0, 2).toUpperCase()}</span><p><b>{[student.name, student.surname].filter(Boolean).join(" ")}</b><small>ACMP #{student.acmp_id}</small></p></div><strong>{student[sort]}</strong>{data?.group.showGifts && <div className="standing-gifts">{student.gifts.length ? student.gifts.map((gift) => <span key={gift.id} title={`${gift.gift_name} · ${gift.target_solved} solved`}>{gift.image_data ? <img src={gift.image_data} alt={gift.gift_name} /> : "🎁"}<small>{gift.gift_name}</small></span>) : <i>No delivered gifts</i>}</div>}</article>)}</div></>}</section></main>;
+}
+
+

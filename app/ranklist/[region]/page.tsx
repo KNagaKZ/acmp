@@ -1,0 +1,1 @@
+import{PublicStandings}from"@/components/PublicStandings";export default async function Page({params}:{params:Promise<{region:string}>}){const region=(await params).region;return <PublicStandings slug={region} endpoint="ranklists"/>}

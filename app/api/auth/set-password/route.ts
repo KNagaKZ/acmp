@@ -1,0 +1,6 @@
+import { hash } from "bcryptjs";
+import { NextResponse } from "next/server";
+import { createSession, getSession } from "@/lib/auth";
+import database, { type TeacherRow } from "@/lib/db";
+
+export async function POST(request: Request) { const session = await getSession(); if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 }); const body = await request.json().catch(() => null) as { password?: string } | null; const password = body?.password ?? ""; if (password.length < 8) return NextResponse.json({ error: "Password must contain at least 8 characters." }, { status: 400 }); const passwordHash = await hash(password, 12); database.prepare("UPDATE teachers SET password_hash = ?, must_change_password = 0, one_time_password_hash = NULL WHERE id = ?").run(passwordHash, session.teacherId); const teacher = database.prepare("SELECT * FROM teachers WHERE id = ?").get(session.teacherId) as TeacherRow; await createSession({ teacherId: teacher.id, name: teacher.name, surname: teacher.surname, email: teacher.email, isSuperAdmin: Boolean(teacher.is_super_admin), mustChangePassword: false }); return NextResponse.json({ ok: true, isSuperAdmin: Boolean(teacher.is_super_admin) }); }
