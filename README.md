@@ -1,42 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ACMP Analyzer
 
-## ACMP Visualizer teacher accounts
+Next.js analytics, teacher rosters, gift milestones, shared group standings, and Kazakhstan ranklists. Saved application records use **Supabase Postgres**.
 
-Teachers can register at `/register`, log in at `/login`, and manage a private student roster at `/dashboard`. Passwords are hashed with bcrypt, sessions use signed HTTP-only cookies, and records are stored in `data/acmp-visualizer.db` with SQLite. Every student operation is scoped to the authenticated teacher.
+## Database setup
 
-For production, set a long random `AUTH_SECRET` as shown in `.env.example`. SQLite requires persistent local storage; replace `lib/db.ts` with a managed database when deploying to an ephemeral serverless host.
+The ACMP schema has been installed in Supabase project `ppzqwpwcfhisgjccfdpa`:
+[Open the project](https://supabase.com/dashboard/project/ppzqwpwcfhisgjccfdpa).
+Tables are in the private `acmp` schema, so choose that schema in the Supabase Table Editor.
 
-## Getting Started
+1. Install dependencies with `npm ci` (Node 22.13 or later).
+2. Copy `.env.example` to `.env.local` and set `DATABASE_URL` and `AUTH_SECRET`.
+3. Use the **Transaction pooler** URI from the Supabase **Connect** panel for serverless hosting. For the app role, replace `postgres.PROJECT_REF` with `acmp_app.PROJECT_REF` and use the app role's own password. For a direct connection, the username is simply `acmp_app`.
+4. Start with `npm run dev` and open http://localhost:3000.
 
-First, run the development server:
+Database credentials belong only in the server environment. `.env.local`, database files, and secrets are excluded from Git. No Supabase secret or service-role key is required by this implementation.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+For another Supabase project, apply `supabase/migrations/20261014062319_acmp_schema.sql` using its SQL Editor. It creates a restricted `acmp_app` role with no login until you set its password:
+
+```sql
+ALTER ROLE acmp_app WITH LOGIN PASSWORD 'REPLACE_WITH_A_LONG_RANDOM_APP_PASSWORD';
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Alternatively, set a temporary `DATABASE_ADMIN_URL` and run `npm run db:apply`. Remove the admin connection from the runtime environment afterward. The running app needs only the restricted `DATABASE_URL`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Existing SQLite records
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To move records from a previous installation into an **empty** cloud database, set `DATABASE_ADMIN_URL`, then:
 
-## Learn More
+```powershell
+npm run db:import -- "C:\path\to\data\acmp-visualizer.db"
+```
 
-To learn more about Next.js, take a look at the following resources:
+The import runs in one transaction and keeps teacher password hashes, IDs, student metadata, gift photos/checkpoints, groups, memberships, and ranklist entries. It opens the SQLite source read-only and refuses to import over existing cloud records. The separate admin login remains separate from teacher accounts. Remove `DATABASE_ADMIN_URL` after the import.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Access model
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Teachers register at `/register` and sign in at `/login`. Existing bcrypt password hashing and signed HTTP-only sessions are preserved. The separate admin username is `admin`. Server routes enforce teacher ownership or admin permissions before accessing records.
 
-## Deploy on Vercel
+The private schema is not exposed through Supabase's Data API. All six tables have RLS enabled; only the restricted backend `acmp_app` role has data access. Browser `anon` and `authenticated` roles cannot read the schema. Public standings are assembled by server routes and reveal only the intended display fields and delivered gifts.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Groups are managed from `/dashboard`. Regional membership is managed at `/ranklists/manage`; public ranklists are at `/ranklist/south`, `/ranklist/north`, `/ranklist/east`, `/ranklist/west`, and `/ranklist/kazakhstan`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Hosting
+
+Configure `DATABASE_URL` and a random `AUTH_SECRET` in the hosting provider's server environment. The app no longer needs a persistent local filesystem or a native SQLite dependency. Gift images continue to be stored with reward records.
+
+## Verification
+
+```powershell
+npm run test:database
+npm run build
+```
+
+With the development server running on port 3100 and `DATABASE_URL` configured, `npm run test:database:live` checks the real API against Supabase using disposable test accounts, then removes those accounts and their records. Set `TEST_ORIGIN` to test another local port.
+
+The database test executes the migration against local Postgres and checks case-insensitive teacher uniqueness, ownership-scoped queries, parameterized strings, gift delivery updates, group transaction rollback, region checks, cascades, and denied browser-role access.
+
+Supabase's connection guidance: https://supabase.com/docs/guides/database/connecting-to-postgres
