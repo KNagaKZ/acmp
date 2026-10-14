@@ -12,8 +12,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     const values = Object.fromEntries(new FormData(event.currentTarget));
     try {
       const response = await fetch(`/api/auth/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? `Login service is unavailable (HTTP ${response.status}). Please contact the administrator.`);
+      if (!data?.ok) throw new Error("The server returned an invalid login response. Please try again.");
       router.push(data.mustChangePassword ? "/set-password" : data.isSuperAdmin ? "/admin" : "/dashboard"); router.refresh();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Something went wrong."); }
     finally { setLoading(false); }
